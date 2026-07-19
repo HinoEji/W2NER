@@ -211,6 +211,9 @@ class Trainer(object):
 
     def save(self, path):
         torch.save(self.model.state_dict(), path)
+        if hasattr(config, "tokenizer"):
+            config.tokenizer.save_pretrained(config.tokenizer_path)
+            logger.info("Tokenizer saved to {}".format(config.tokenizer_path))
 
     def load(self, path):
         self.model.load_state_dict(torch.load(path))
@@ -221,6 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='./config/conll03.json')
     parser.add_argument('--save_path', type=str, default='./model.pt')
     parser.add_argument('--predict_path', type=str, default='./output.json')
+    parser.add_argument('--tokenizer_path', type=str)
     parser.add_argument('--device', type=int, default=0)
 
     parser.add_argument('--dist_emb_size', type=int)

@@ -176,6 +176,14 @@ def fill_vocab(vocab, dataset):
     return entity_num
 
 
+def load_tokenizer(config):
+    tokenizer_source = config.tokenizer_path if os.path.isdir(config.tokenizer_path) else config.bert_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, cache_dir="./cache/")
+    if hasattr(config, "logger"):
+        config.logger.info("Loading tokenizer from {}".format(tokenizer_source))
+    return tokenizer
+
+
 def load_data_bert(config):
     with open('./data/{}/train.json'.format(config.dataset), 'r', encoding='utf-8') as f:
         train_data = json.load(f)
@@ -184,7 +192,7 @@ def load_data_bert(config):
     with open('./data/{}/test.json'.format(config.dataset), 'r', encoding='utf-8') as f:
         test_data = json.load(f)
 
-    tokenizer = AutoTokenizer.from_pretrained(config.bert_name, cache_dir="./cache/")
+    tokenizer = load_tokenizer(config)
 
     vocab = Vocabulary()
     train_ent_num = fill_vocab(vocab, train_data)
@@ -199,6 +207,7 @@ def load_data_bert(config):
 
     config.label_num = len(vocab.label2id)
     config.vocab = vocab
+    config.tokenizer = tokenizer
 
     train_dataset = RelationDataset(*process_bert(train_data, tokenizer, vocab))
     dev_dataset = RelationDataset(*process_bert(dev_data, tokenizer, vocab))

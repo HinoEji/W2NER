@@ -1,4 +1,5 @@
 import json
+import os
 
 
 class Config:
@@ -9,6 +10,7 @@ class Config:
         self.dataset = config["dataset"]
         self.save_path = config["save_path"]
         self.predict_path = config["predict_path"]
+        self.tokenizer_path = config.get("tokenizer_path")
 
         self.dist_emb_size = config["dist_emb_size"]
         self.type_emb_size = config["type_emb_size"]
@@ -41,6 +43,13 @@ class Config:
         for k, v in args.__dict__.items():
             if v is not None:
                 self.__dict__[k] = v
+        if self.tokenizer_path is None:
+            self.tokenizer_path = self._default_tokenizer_path(self.save_path)
 
     def __repr__(self):
         return "{}".format(self.__dict__.items())
+
+    @staticmethod
+    def _default_tokenizer_path(save_path):
+        root, _ = os.path.splitext(save_path)
+        return "{}_tokenizer".format(root)
