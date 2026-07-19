@@ -169,3 +169,4 @@ gradio_cached_examples/
 
 log/
 cache/
+.agent/
