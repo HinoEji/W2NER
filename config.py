@@ -38,7 +38,7 @@ class Config:
 
         self.use_bert_last_4_layers = config["use_bert_last_4_layers"]
 
-        self.seed = config["seed"]
+        self.seed = config.get("seed", 123)
 
         for k, v in args.__dict__.items():
             if v is not None:

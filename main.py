@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import random
 import numpy as np
 import prettytable as pt
 import torch
@@ -13,6 +15,63 @@ import config
 import data_loader
 import utils
 from model import Model
+
+
+def set_seed(seed):
+    """Thiết lập seed cho các thư viện sinh số ngẫu nhiên trong một lần chạy.
+
+    Args:
+        seed: Giá trị seed dùng cho Python, NumPy, PyTorch và Transformers.
+    """
+    seed = int(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    transformers.set_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+def seed_worker(worker_id):
+    """Đồng bộ seed cho từng worker của DataLoader.
+
+    Args:
+        worker_id: ID worker do PyTorch truyền vào khi khởi tạo worker.
+    """
+    worker_seed = torch.initial_seed() % 2 ** 32
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+
+
+def build_data_loader(dataset, batch_size, shuffle, drop_last, seed, num_workers=4):
+    """Tạo DataLoader có generator riêng để thứ tự batch tái lập được.
+
+    Args:
+        dataset: Dataset cần nạp.
+        batch_size: Kích thước batch.
+        shuffle: Có xáo trộn dữ liệu hay không.
+        drop_last: Có bỏ batch cuối nếu không đủ kích thước hay không.
+        seed: Seed riêng của loader.
+        num_workers: Số worker dùng để nạp dữ liệu.
+
+    Returns:
+        DataLoader đã được gắn seed ổn định.
+    """
+    generator = torch.Generator()
+    generator.manual_seed(int(seed))
+    return DataLoader(dataset=dataset,
+                      batch_size=batch_size,
+                      collate_fn=data_loader.collate_fn,
+                      shuffle=shuffle,
+                      num_workers=num_workers,
+                      drop_last=drop_last,
+                      worker_init_fn=seed_worker,
+                      generator=generator)
 
 
 class Trainer(object):
@@ -254,7 +313,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--use_bert_last_4_layers', type=int, help="1: true, 0: false")
 
-    parser.add_argument('--seed', type=int)
+    parser.add_argument('--seed', type=int, help="Random seed for reproducible runs")
 
     args = parser.parse_args()
 
@@ -267,23 +326,18 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.set_device(args.device)
 
-    # random.seed(config.seed)
-    # np.random.seed(config.seed)
-    # torch.manual_seed(config.seed)
-    # torch.cuda.manual_seed(config.seed)
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
+    set_seed(config.seed)
+    logger.info("Seed set to {}".format(config.seed))
 
     logger.info("Loading Data")
     datasets, ori_data = data_loader.load_data_bert(config)
 
     train_loader, dev_loader, test_loader = (
-        DataLoader(dataset=dataset,
-                   batch_size=config.batch_size,
-                   collate_fn=data_loader.collate_fn,
-                   shuffle=i == 0,
-                   num_workers=4,
-                   drop_last=i == 0)
+        build_data_loader(dataset=dataset,
+                          batch_size=config.batch_size,
+                          shuffle=i == 0,
+                          drop_last=i == 0,
+                          seed=config.seed + i)
         for i, dataset in enumerate(datasets)
     )
 
