@@ -3,12 +3,10 @@ import json
 import os
 import random
 import numpy as np
-import prettytable as pt
 import torch
 import torch.autograd
 import torch.nn as nn
 import transformers
-from sklearn.metrics import precision_recall_fscore_support, f1_score
 from torch.utils.data import DataLoader
 
 import config
@@ -74,6 +72,19 @@ def build_data_loader(dataset, batch_size, shuffle, drop_last, seed, num_workers
                       generator=generator)
 
 
+def move_batch_to_device(data_batch, device):
+    """Chuyển tensor batch sang device đang dùng.
+
+    Args:
+        data_batch: Batch do DataLoader trả về.
+        device: torch.device đích.
+
+    Returns:
+        Danh sách tensor đã chuyển device, bỏ phần metadata cuối batch.
+    """
+    return [data.to(device) for data in data_batch[:-1]]
+
+
 class Trainer(object):
     def __init__(self, model):
         self.model = model
@@ -94,7 +105,7 @@ class Trainer(object):
              'weight_decay': config.weight_decay},
         ]
 
-        self.optimizer = transformers.AdamW(params, lr=config.learning_rate, weight_decay=config.weight_decay)
+        self.optimizer = torch.optim.AdamW(params, lr=config.learning_rate, weight_decay=config.weight_decay)
         self.scheduler = transformers.get_linear_schedule_with_warmup(self.optimizer,
                                                                       num_warmup_steps=config.warm_factor * updates_total,
                                                                       num_training_steps=updates_total)
@@ -106,11 +117,11 @@ class Trainer(object):
         label_result = []
 
         for i, data_batch in enumerate(data_loader):
-            data_batch = [data.cuda() for data in data_batch[:-1]]
+            data_batch = move_batch_to_device(data_batch, config.device)
 
             bert_inputs, grid_labels, grid_mask2d, pieces2word, dist_inputs, sent_length = data_batch
 
-            outputs = model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+            outputs = self.model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
 
             grid_mask2d = grid_mask2d.clone()
             loss = self.criterion(outputs[grid_mask2d], grid_labels[grid_mask2d])
@@ -134,13 +145,13 @@ class Trainer(object):
         label_result = torch.cat(label_result)
         pred_result = torch.cat(pred_result)
 
-        p, r, f1, _ = precision_recall_fscore_support(label_result.numpy(),
-                                                      pred_result.numpy(),
-                                                      average="macro")
+        p, r, f1, _ = utils.classification_metrics(label_result.numpy(),
+                                                   pred_result.numpy(),
+                                                   average="macro")
 
-        table = pt.PrettyTable(["Train {}".format(epoch), "Loss", "F1", "Precision", "Recall"])
-        table.add_row(["Label", "{:.4f}".format(np.mean(loss_list))] +
-                      ["{:3.4f}".format(x) for x in [f1, p, r]])
+        table = utils.format_table(["Train {}".format(epoch), "Loss", "F1", "Precision", "Recall"],
+                                   [["Label", "{:.4f}".format(np.mean(loss_list))] +
+                                    ["{:3.4f}".format(x) for x in [f1, p, r]]])
         logger.info("\n{}".format(table))
         return f1
 
@@ -156,10 +167,10 @@ class Trainer(object):
         with torch.no_grad():
             for i, data_batch in enumerate(data_loader):
                 entity_text = data_batch[-1]
-                data_batch = [data.cuda() for data in data_batch[:-1]]
+                data_batch = move_batch_to_device(data_batch, config.device)
                 bert_inputs, grid_labels, grid_mask2d, pieces2word, dist_inputs, sent_length = data_batch
 
-                outputs = model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+                outputs = self.model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
                 length = sent_length
 
                 grid_mask2d = grid_mask2d.clone()
@@ -180,19 +191,19 @@ class Trainer(object):
         label_result = torch.cat(label_result)
         pred_result = torch.cat(pred_result)
 
-        p, r, f1, _ = precision_recall_fscore_support(label_result.numpy(),
-                                                      pred_result.numpy(),
-                                                      average="macro")
+        p, r, f1, _ = utils.classification_metrics(label_result.numpy(),
+                                                   pred_result.numpy(),
+                                                   average="macro")
         e_f1, e_p, e_r = utils.cal_f1(total_ent_c, total_ent_p, total_ent_r)
 
         title = "EVAL" if not is_test else "TEST"
-        logger.info('{} Label F1 {}'.format(title, f1_score(label_result.numpy(),
-                                                            pred_result.numpy(),
-                                                            average=None)))
+        logger.info('{} Label F1 {}'.format(title, utils.classification_metrics(label_result.numpy(),
+                                                                                pred_result.numpy(),
+                                                                                average=None)))
 
-        table = pt.PrettyTable(["{} {}".format(title, epoch), 'F1', "Precision", "Recall"])
-        table.add_row(["Label"] + ["{:3.4f}".format(x) for x in [f1, p, r]])
-        table.add_row(["Entity"] + ["{:3.4f}".format(x) for x in [e_f1, e_p, e_r]])
+        table = utils.format_table(["{} {}".format(title, epoch), 'F1', "Precision", "Recall"],
+                                   [["Label"] + ["{:3.4f}".format(x) for x in [f1, p, r]],
+                                    ["Entity"] + ["{:3.4f}".format(x) for x in [e_f1, e_p, e_r]]])
 
         logger.info("\n{}".format(table))
         return e_f1
@@ -214,10 +225,10 @@ class Trainer(object):
             for data_batch in data_loader:
                 sentence_batch = data[i:i+config.batch_size]
                 entity_text = data_batch[-1]
-                data_batch = [data.cuda() for data in data_batch[:-1]]
+                data_batch = move_batch_to_device(data_batch, config.device)
                 bert_inputs, grid_labels, grid_mask2d, pieces2word, dist_inputs, sent_length = data_batch
 
-                outputs = model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+                outputs = self.model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
                 length = sent_length
 
                 grid_mask2d = grid_mask2d.clone()
@@ -247,19 +258,19 @@ class Trainer(object):
         label_result = torch.cat(label_result)
         pred_result = torch.cat(pred_result)
 
-        p, r, f1, _ = precision_recall_fscore_support(label_result.numpy(),
-                                                      pred_result.numpy(),
-                                                      average="macro")
+        p, r, f1, _ = utils.classification_metrics(label_result.numpy(),
+                                                   pred_result.numpy(),
+                                                   average="macro")
         e_f1, e_p, e_r = utils.cal_f1(total_ent_c, total_ent_p, total_ent_r)
 
         title = "TEST"
-        logger.info('{} Label F1 {}'.format("TEST", f1_score(label_result.numpy(),
-                                                            pred_result.numpy(),
-                                                            average=None)))
+        logger.info('{} Label F1 {}'.format("TEST", utils.classification_metrics(label_result.numpy(),
+                                                                                 pred_result.numpy(),
+                                                                                 average=None)))
 
-        table = pt.PrettyTable(["{} {}".format(title, epoch), 'F1', "Precision", "Recall"])
-        table.add_row(["Label"] + ["{:3.4f}".format(x) for x in [f1, p, r]])
-        table.add_row(["Entity"] + ["{:3.4f}".format(x) for x in [e_f1, e_p, e_r]])
+        table = utils.format_table(["{} {}".format(title, epoch), 'F1', "Precision", "Recall"],
+                                   [["Label"] + ["{:3.4f}".format(x) for x in [f1, p, r]],
+                                    ["Entity"] + ["{:3.4f}".format(x) for x in [e_f1, e_p, e_r]]])
 
         logger.info("\n{}".format(table))
 
@@ -275,7 +286,7 @@ class Trainer(object):
             logger.info("Tokenizer saved to {}".format(config.tokenizer_path))
 
     def load(self, path):
-        self.model.load_state_dict(torch.load(path))
+        self.model.load_state_dict(torch.load(path, map_location=config.device))
 
 
 if __name__ == '__main__':
@@ -285,6 +296,7 @@ if __name__ == '__main__':
     parser.add_argument('--predict_path', type=str, default='./output.json')
     parser.add_argument('--tokenizer_path', type=str)
     parser.add_argument('--device', type=int, default=0)
+    parser.add_argument('--num_workers', type=int)
 
     parser.add_argument('--dist_emb_size', type=int)
     parser.add_argument('--type_emb_size', type=int)
@@ -324,7 +336,11 @@ if __name__ == '__main__':
     config.logger = logger
 
     if torch.cuda.is_available():
-        torch.cuda.set_device(args.device)
+        torch.cuda.set_device(config.device)
+        config.device = torch.device("cuda:{}".format(config.device))
+    else:
+        config.device = torch.device("cpu")
+    logger.info("Using device {}".format(config.device))
 
     set_seed(config.seed)
     logger.info("Seed set to {}".format(config.seed))
@@ -337,7 +353,8 @@ if __name__ == '__main__':
                           batch_size=config.batch_size,
                           shuffle=i == 0,
                           drop_last=i == 0,
-                          seed=config.seed + i)
+                          seed=config.seed + i,
+                          num_workers=config.num_workers)
         for i, dataset in enumerate(datasets)
     )
 
@@ -346,7 +363,7 @@ if __name__ == '__main__':
     logger.info("Building Model")
     model = Model(config)
 
-    model = model.cuda()
+    model = model.to(config.device)
 
     trainer = Trainer(model)
 

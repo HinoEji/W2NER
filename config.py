@@ -28,6 +28,7 @@ class Config:
 
         self.epochs = config["epochs"]
         self.batch_size = config["batch_size"]
+        self.num_workers = config.get("num_workers", 4)
 
         self.learning_rate = config["learning_rate"]
         self.weight_decay = config["weight_decay"]

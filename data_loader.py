@@ -3,12 +3,9 @@ import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 import numpy as np
-import prettytable as pt
-from gensim.models import KeyedVectors
 from transformers import AutoTokenizer
 import os
 import utils
-import requests
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 dis2idx = np.zeros((1000), dtype='int64')
@@ -199,10 +196,10 @@ def load_data_bert(config):
     dev_ent_num = fill_vocab(vocab, dev_data)
     test_ent_num = fill_vocab(vocab, test_data)
 
-    table = pt.PrettyTable([config.dataset, 'sentences', 'entities'])
-    table.add_row(['train', len(train_data), train_ent_num])
-    table.add_row(['dev', len(dev_data), dev_ent_num])
-    table.add_row(['test', len(test_data), test_ent_num])
+    table = utils.format_table([config.dataset, 'sentences', 'entities'],
+                               [['train', len(train_data), train_ent_num],
+                                ['dev', len(dev_data), dev_ent_num],
+                                ['test', len(test_data), test_ent_num]])
     config.logger.info("\n{}".format(table))
 
     config.label_num = len(vocab.label2id)

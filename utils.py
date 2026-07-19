@@ -1,10 +1,14 @@
 import logging
+import os
 import pickle
 import time
 from collections import defaultdict, deque
 
+import numpy as np
+
 
 def get_logger(dataset):
+    os.makedirs("./log", exist_ok=True)
     pathname = "./log/{}_{}.txt".format(dataset, time.strftime("%m-%d_%H-%M-%S"))
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -23,6 +27,75 @@ def get_logger(dataset):
     logger.addHandler(stream_handler)
 
     return logger
+
+
+def format_table(headers, rows):
+    """Tạo bảng text đơn giản để tránh phụ thuộc prettytable trên Kaggle.
+
+    Args:
+        headers: Danh sách tiêu đề cột.
+        rows: Danh sách các dòng dữ liệu.
+
+    Returns:
+        Chuỗi bảng đã căn cột.
+    """
+    table = [[str(cell) for cell in headers]]
+    table.extend([[str(cell) for cell in row] for row in rows])
+    widths = [max(len(row[i]) for row in table) for i in range(len(headers))]
+    separator = "+{}+".format("+".join("-" * (width + 2) for width in widths))
+
+    lines = [separator]
+    for row_index, row in enumerate(table):
+        line = "|{}|".format("|".join(" {} ".format(cell.ljust(widths[i]))
+                                      for i, cell in enumerate(row)))
+        lines.append(line)
+        if row_index == 0:
+            lines.append(separator)
+    lines.append(separator)
+    return "\n".join(lines)
+
+
+def classification_metrics(y_true, y_pred, average="macro"):
+    """Tính precision/recall/F1 cơ bản mà không cần scikit-learn.
+
+    Args:
+        y_true: Nhãn thật.
+        y_pred: Nhãn dự đoán.
+        average: "macro" để lấy trung bình, hoặc None để trả F1 từng nhãn.
+
+    Returns:
+        Với average="macro": tuple (precision, recall, f1, support).
+        Với average=None: mảng F1 theo từng nhãn.
+    """
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    labels = np.unique(np.concatenate([y_true, y_pred]))
+
+    precisions = []
+    recalls = []
+    f1_scores = []
+    supports = []
+    for label in labels:
+        true_mask = y_true == label
+        pred_mask = y_pred == label
+        tp = np.logical_and(true_mask, pred_mask).sum()
+        fp = np.logical_and(~true_mask, pred_mask).sum()
+        fn = np.logical_and(true_mask, ~pred_mask).sum()
+
+        precision = tp / (tp + fp) if tp + fp > 0 else 0.0
+        recall = tp / (tp + fn) if tp + fn > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+
+        precisions.append(precision)
+        recalls.append(recall)
+        f1_scores.append(f1)
+        supports.append(true_mask.sum())
+
+    if average is None:
+        return np.asarray(f1_scores)
+    if average != "macro":
+        raise ValueError("Only average='macro' or average=None is supported")
+    return np.mean(precisions), np.mean(recalls), np.mean(f1_scores), np.asarray(supports)
 
 
 def save_file(path, data):
