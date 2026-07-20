@@ -274,8 +274,9 @@ class Trainer(object):
 
         logger.info("\n{}".format(table))
 
+        os.makedirs(os.path.dirname(config.predict_path), exist_ok=True)
         with open(config.predict_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False)
+            json.dump(result, f, ensure_ascii=False, indent=4)
 
         return e_f1
 
