@@ -280,6 +280,7 @@ class Trainer(object):
         return e_f1
 
     def save(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(self.model.state_dict(), path)
         if hasattr(config, "tokenizer"):
             config.tokenizer.save_pretrained(config.tokenizer_path)
@@ -291,9 +292,9 @@ class Trainer(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='./config/conll03.json')
-    parser.add_argument('--save_path', type=str, default='./model.pt')
-    parser.add_argument('--predict_path', type=str, default='./output.json')
+    parser.add_argument('--config', type=str)
+    parser.add_argument('--save_path')
+    parser.add_argument('--predict_path')
     parser.add_argument('--tokenizer_path', type=str)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--num_workers', type=int)
